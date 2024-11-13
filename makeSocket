@@ -1,0 +1,38 @@
+.PHONY : all clean PRECIOUS
+# 编译器和编译选项
+CC = g++
+CFLAGS = -Wall -g
+
+# 目录设置
+SRCDIR = src
+OBJDIR = obj
+OUTDIR = ./
+
+LIBDIR = -L library/winsock/lib
+
+# 获取所有源文件
+SOURCES = $(filter-out $(SRCDIR)/gui.cpp, $(wildcard $(SRCDIR)/*.cpp))
+
+# 生成的目标文件对应的 .o 文件
+OBJECTS = $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
+
+LIB = -lws2_32
+# 最终生成的可执行文件（根据源文件自动推导）
+TARGETS = $(SOURCES:$(SRCDIR)/%.cpp=$(OUTDIR)/%.exe)
+
+PRECIOUS : $(OBJECTS)
+# 默认目标，生成所有的 .exe 文件
+all: $(TARGETS)
+
+# 生成可执行文件（自动针对每个源文件生成对应的目标）
+$(OUTDIR)/%.exe: $(OBJDIR)/%.o
+	$(CC) $(CFLAGS) $(LIB_DIR) -o $@ $^ $(LIB)
+
+# 编译源文件为目标文件
+$(OBJDIR)/%.o: $(SRCDIR)/%.cpp
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+# 清理生成的文件
+clean:
+	rm -f $(TARGETS) $(OBJECTS)
+	@echo "***clean done***"
