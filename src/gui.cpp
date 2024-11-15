@@ -6,7 +6,7 @@
 #include <iostream>
 #include <string>
 
-int Gui(std::string& message);
+int showWindow(std::string& message);
 
 int main(){
     //初始化
@@ -140,7 +140,7 @@ int main(){
     glfwTerminate();
 }
 
-int Gui(std::string& message){
+int showWindow(std::string& message){
     //初始化
     if(!glfwInit()){
         return 1;
