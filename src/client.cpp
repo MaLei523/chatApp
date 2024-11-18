@@ -7,29 +7,71 @@ using namespace std;
 #define CONTENT_SIZE 70
 #define PORT 50000
 
-struct Message {
-    char from[15];      // 固定大小的 from 字段，最多 14 个字符 + 1 个结尾的 '\0'
-    char to[15];        // 固定大小的 to 字段，最多 14 个字符 + 1 个结尾的 '\0'
-    char content[70];  // 固定大小的 content 字段,69+1
+class Message {
+private:
+    char from[16];    // 发送方，最大15字符 + '\0'
+    char to[16];      // 接收方，最大15字符 + '\0'
+    char content[68]; // 内容，最大67字符 + '\0'
+public:
+    // 设置发送方
+    void setFrom(const string str_from) {
+        if (str_from.size() > 15) {
+            cerr << "Error: 'from' exceeds 15 characters." << endl;
+            return;
+        }
+        strncpy(from, str_from.c_str(),15);
+        from[15] = '\0'; // 确保以 '\0' 结尾
+    }
 
-    // 序列化为二进制数据
+    // 设置接收方
+    void setTo(const string str_to) {
+        if (str_to.size() > 15) {
+            cerr << "Error: 'to' exceeds 15 characters." << endl;
+            return;
+        }
+        strncpy(to, str_to.c_str(), 15);
+        to[15] = '\0'; // 确保以 '\0' 结尾
+    }
+
+    // 设置内容
+    void setContent(const string str_content) {
+        if (str_content.size() > 67) {
+            cerr << "Error: 'content' exceeds 67 characters." << endl;
+            return;
+        }
+        strncpy(content, str_content.c_str(), sizeof(content) - 1);
+        content[sizeof(content) - 1] = '\0'; // 确保以 '\0' 结尾
+    }
+
+    // 获取发送方
+    string returnFrom(){
+        return string(from);
+    }
+
+    // 获取接收方
+    string returnTo(){
+        return string(to);
+    }
+
+    // 获取内容
+    string returnContent(){
+        return string(content);
+    }
+
+    // 序列化
     void serialize(char* buffer) const {
         memcpy(buffer, this, sizeof(Message));
     }
 
+    // 反序列化
     void deserialize(const char* buffer) {
         memcpy(this, buffer, sizeof(Message));
     }
-
 };
-void fillData(Message& message,string& from,string& to,string& content);
-void getInputPrompt(string& str,string prompt);
+string getInputPrompt(string prompt="");
+void sendMessage(SOCKET& clt_sock,Message message);
+void sendConfirm(SOCKET& clt_sock,Message message);
 void recvMessage(SOCKET& clt_sock);
-void sendMessage(SOCKET& clt_sock,string& from,string& to);
-void sendConfirm(SOCKET& clt_sock,string& from);
-void getInput(vector<char>& x,string prompt);
-
-
 
 int main(){
     sockaddr_in ser_addr;
@@ -56,29 +98,37 @@ int main(){
         WSACleanup();
         return 1;      
     }
-    string from;
-    string to;
-    getInputPrompt(from,"Enter your username");
-    getInputPrompt(to,"Enter your friend");
-    sendConfirm(clt_sock,from);
+    Message message;
+    message.setFrom(getInputPrompt("From:"));
+    message.setTo(getInputPrompt("To:"));
+    sendConfirm(clt_sock,message);
+
     int max_fd = clt_sock;
+    fd_set read_fds,temp_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(0,&read_fds);
+    FD_SET(clt_sock,&read_fds);
+    timeval timeout;
+    timeout.tv_sec = 5;
+    timeout.tv_sec = 0;
+
     while (1)
     {
-        cout<<"Input:";
-        fd_set read_fds;
-        FD_ZERO(&read_fds);
-        FD_SET(0,&read_fds);
-        FD_SET(clt_sock,&read_fds);
-
-        int select_check = select(max_fd+1,&read_fds,nullptr,nullptr,NULL);
+        cout<<"Content:";
+        temp_fds = read_fds;
+        int select_check = select(max_fd+1,&temp_fds,nullptr,nullptr,&timeout);
         if(select_check == SOCKET_ERROR){
-            cerr << "connect failed with error: " << WSAGetLastError() << endl;
+            cerr << "select failed with error: " << WSAGetLastError() << endl;
             break;
         }
-        if(FD_ISSET(0,&read_fds)){
-            sendMessage(clt_sock,from,to);
+        if(select_check == 0){
+            cout<<"client Idle No Connection"<<endl;
+            continue;
         }
-        if(FD_ISSET(clt_sock,&read_fds)){
+        if(FD_ISSET(0,&temp_fds)){
+            sendMessage(clt_sock,message);
+        }
+        if(FD_ISSET(clt_sock,&temp_fds)){
             recvMessage(clt_sock);
         }
     }
@@ -87,51 +137,27 @@ int main(){
 }
 
 void recvMessage(SOCKET& clt_sock) {
-    Message message;
+    Message recv_message;
     char data[BUF_SIZE];
-
     int recv_len = recv(clt_sock, data, BUF_SIZE, 0);
-    
     if (recv_len == 0) {
         cout << "Server disconnected" << endl;
         closesocket(clt_sock);
         return;  
     }
-    
     if (recv_len == SOCKET_ERROR) {
         cerr << "recv failed with error " << WSAGetLastError() << endl;
         return;
     }
     
-    message.deserialize(data);
-    cout<<string(message.from)<<":"<<string(message.content)<<endl;
+    recv_message.deserialize(data);
+    cout<<recv_message.returnFrom()<<":"<<recv_message.returnContent()<<endl;
 }
 
-void sendConfirm(SOCKET& clt_sock,string& from){
-    Message message;
-    from.copy(message.from,14);
-    message.from[14] = '\0';
-    char data[BUF_SIZE];
-    int send_check = send(clt_sock,data,BUF_SIZE, 0);
-    if (send_check == SOCKET_ERROR) {
-        cerr << "send failed with error " << WSAGetLastError() << endl;
-    } else if (send_check == 0) {
-        cout << "Server disconnected" << endl;
-        closesocket(clt_sock);
-    }
-}
-void sendMessage(SOCKET& clt_sock,string& from,string& to) {
-    string content;
-    getline(cin,content);
-
-    Message message;
-    fillData(message,from,to,content);
-
+void sendConfirm(SOCKET& clt_sock,Message message){
     char data[BUF_SIZE];
     message.serialize(data);
-
     int send_check = send(clt_sock,data,BUF_SIZE, 0);
-
     if (send_check == SOCKET_ERROR) {
         cerr << "send failed with error " << WSAGetLastError() << endl;
     } else if (send_check == 0) {
@@ -139,22 +165,17 @@ void sendMessage(SOCKET& clt_sock,string& from,string& to) {
         closesocket(clt_sock);
     }
 }
-void fillData(Message& message,string& from,string& to,string& content){
-    from.copy(message.from,14);
-    to.copy(message.to,14);
-    content.copy(message.content,69);
-    message.from[14] = '\0';
-    message.to[14] = '\0';
-    message.content[69] = '\0';
+void sendMessage(SOCKET& clt_sock,Message message) {
+    message.setContent(getInputPrompt());
+    sendConfirm(clt_sock,message);
 }
 
-void getInputPrompt(string& str,string prompt=""){
-    cout<<prompt<<":";
+
+string getInputPrompt(string prompt){
+    if(prompt!=""){
+        cout<<prompt;
+    }
+    string str;
     getline(cin,str);
-}
-
-void getInput(vector<char>& x){
-    string temp;
-    getline(cin,temp);
-    x.assign(temp.begin(),temp.end());
+    return str;
 }

@@ -1,9 +1,7 @@
 #include <winsock2.h>
 #include <iostream>
 #include <vector>
-#include <thread>
-#include <deque>
-#include <mutex>
+#include <algorithm>
 #include <unordered_map>
 using namespace std;
 
@@ -11,27 +9,74 @@ using namespace std;
 #define CONTENT_SIZE 70
 #define PORT 50000
 
-struct Message {
-    char from[15];      // 固定大小的 from 字段，最多 14 个字符 + 1 个结尾的 '\0'
-    char to[15];        // 固定大小的 to 字段，最多 14 个字符 + 1 个结尾的 '\0'
-    char content[70];  // 固定大小的 content 字段,69+1
+class Message {
+private:
+    char from[16];    // 发送方，最大15字符 + '\0'
+    char to[16];      // 接收方，最大15字符 + '\0'
+    char content[68]; // 内容，最大67字符 + '\0'
+public:
+    // 设置发送方
+    void setFrom(const string str_from) {
+        if (str_from.size() > 15) {
+            cerr << "Error: 'from' exceeds 15 characters." << endl;
+            return;
+        }
+        strncpy(from, str_from.c_str(),15);
+        from[15] = '\0'; // 确保以 '\0' 结尾
+    }
 
-    // 序列化为二进制数据
+    // 设置接收方
+    void setTo(const string str_to) {
+        if (str_to.size() > 15) {
+            cerr << "Error: 'to' exceeds 15 characters." << endl;
+            return;
+        }
+        strncpy(to, str_to.c_str(), 15);
+        to[15] = '\0'; // 确保以 '\0' 结尾
+    }
+
+    // 设置内容
+    void setContent(const string str_content) {
+        if (str_content.size() > 67) {
+            cerr << "Error: 'content' exceeds 67 characters." << endl;
+            return;
+        }
+        strncpy(content, str_content.c_str(), sizeof(content) - 1);
+        content[sizeof(content) - 1] = '\0'; // 确保以 '\0' 结尾
+    }
+
+    // 获取发送方
+    string returnFrom(){
+        return string(from);
+    }
+
+    // 获取接收方
+    string returnTo(){
+        return string(to);
+    }
+
+    // 获取内容
+    string returnContent(){
+        return string(content);
+    }
+
+    // 序列化
     void serialize(char* buffer) const {
         memcpy(buffer, this, sizeof(Message));
     }
 
+    // 反序列化
     void deserialize(const char* buffer) {
         memcpy(this, buffer, sizeof(Message));
     }
-
 };
 
 Message need_to_send;
-unordered_map<string,SOCKET> clt_arr;
+unordered_map<string,SOCKET> clt_map;
+vector<SOCKET> clt_arr;
 int recvMessage(SOCKET& sock);
 void sendMessage();
-
+void recvConfirm(SOCKET clt_sock);
 
 int main(){
     sockaddr_in ser_addr;
@@ -90,38 +135,35 @@ int main(){
             break;
         }
         if(select_check == 0){
-            cout<<"Server Idle No Connection"<<endl;
+            // cout<<"Server Idle No Connection"<<endl;
             continue;
         }
         if(FD_ISSET(ser_sock,&temp_fds)){
-            SOCKET clt_scok = accept(ser_sock,(sockaddr*)&clt_addr,&clt_addr_sz);
-            if(clt_scok == INVALID_SOCKET){
+            SOCKET clt_sock = accept(ser_sock,(sockaddr*)&clt_addr,&clt_addr_sz);
+            if(clt_sock == INVALID_SOCKET){
                 cerr << "Accept failed." <<endl;
-            }else{
-                cout << "New connections created" <<endl;
+                continue;
             }
-            char data[BUF_SIZE];
-            recv(clt_scok,data,BUF_SIZE,0);
-            Message check;
-            check.deserialize(data);
-            cout<<string(check.from)<<endl;
-            cout<<string(check.to)<<endl;
-            clt_arr.emplace(string(check.from),clt_scok);
-            FD_SET(clt_scok,&sock_fds);
+            cout << "New connections created" <<endl;
 
-            max_fd = max(clt_scok,ser_sock);
+            FD_SET(clt_sock,&sock_fds);
+            max_fd = max(clt_sock,ser_sock);
+            recvConfirm(clt_sock);
+
 
         }
-        for(pair<string,SOCKET> i : clt_arr){
-            if(FD_ISSET(i.second,&temp_fds)){
-                int recv_check = recvMessage(i.second);
+        for(SOCKET i : clt_arr){
+            if(FD_ISSET(i,&temp_fds)){
+                int recv_check = recvMessage(i);
                 if(recv_check <= 0){
-                    closesocket(i.second);
-                    FD_CLR(i.second,&sock_fds);
+                    clt_arr.erase(remove(clt_arr.begin(), clt_arr.end(), i), clt_arr.end());
+                    FD_CLR(i,&sock_fds);
+                    closesocket(i);
                     continue;
                 }
                 sendMessage();
             }
+
         }
 
     }
@@ -149,10 +191,17 @@ int recvMessage(SOCKET& sock){
 }
 
 void sendMessage(){
-    string from(need_to_send.from);
-    SOCKET sock = clt_arr[from];
     char data[BUF_SIZE];
     need_to_send.serialize(data);
-    recv(sock,data,BUF_SIZE,0);
+    SOCKET to_sock = clt_map[need_to_send.returnTo()];
+    send(to_sock,data,BUF_SIZE,0);
+}
 
+void recvConfirm(SOCKET clt_sock){
+    char data[BUF_SIZE];
+    recv(clt_sock,data,BUF_SIZE,0);
+    Message check;
+    check.deserialize(data);
+    clt_map.emplace(check.returnFrom(),clt_sock);
+    clt_arr.emplace_back(clt_sock);
 }
