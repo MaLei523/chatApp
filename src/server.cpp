@@ -69,13 +69,15 @@ public:
     void deserialize(const char* buffer) {
         memcpy(this, buffer, sizeof(Message));
     }
+    void swapFromTo(){
+        swap(from,to);
+    }
 };
 
 Message need_to_send;
 unordered_map<string,SOCKET> clt_map;
-vector<SOCKET> clt_arr;
 int recvMessage(SOCKET& sock);
-void sendMessage();
+int sendMessage();
 void recvConfirm(SOCKET clt_sock);
 
 int main(){
@@ -118,7 +120,6 @@ int main(){
         return 1;
     }
     cout << "Server listening on port " << PORT << "..." << endl;
-//----------------------------------------------------------------------------//
 
     int max_fd = ser_sock;
     fd_set temp_fds,sock_fds;
@@ -129,13 +130,14 @@ int main(){
     timeout.tv_usec = 0;
     while(1){
         temp_fds = sock_fds;
+        vector<string> trash;
         int select_check = select(max_fd+1,&temp_fds,nullptr,nullptr,&timeout);
         if(select_check == SOCKET_ERROR){
             cerr<<"select failed"<<endl;
             break;
         }
         if(select_check == 0){
-            // cout<<"Server Idle No Connection"<<endl;
+            cout<<"Server Idle No Connection"<<endl;
             continue;
         }
         if(FD_ISSET(ser_sock,&temp_fds)){
@@ -149,25 +151,35 @@ int main(){
             FD_SET(clt_sock,&sock_fds);
             max_fd = max(clt_sock,ser_sock);
             recvConfirm(clt_sock);
-
-
         }
-        for(SOCKET i : clt_arr){
-            if(FD_ISSET(i,&temp_fds)){
-                int recv_check = recvMessage(i);
-                if(recv_check <= 0){
-                    clt_arr.erase(remove(clt_arr.begin(), clt_arr.end(), i), clt_arr.end());
-                    FD_CLR(i,&sock_fds);
-                    closesocket(i);
+        for(pair<string,SOCKET> i : clt_map){
+            if(FD_ISSET(i.second,&temp_fds)){
+                if(recvMessage(i.second) == -1){
+                    trash.emplace_back(i.first);
+                    FD_CLR(i.second,&sock_fds);
+                    closesocket(i.second);
                     continue;
                 }
-                sendMessage();
+                int send_check = sendMessage();
+                if(send_check==-1){
+                    trash.emplace_back(need_to_send.returnTo());
+                    FD_CLR(clt_map[need_to_send.returnTo()],&sock_fds);
+                    closesocket(clt_map[need_to_send.returnTo()]);
+                }else if(send_check == -2){
+                    trash.emplace_back(need_to_send.returnFrom());
+                    FD_CLR(clt_map[need_to_send.returnFrom()],&sock_fds);
+                    closesocket(clt_map[need_to_send.returnFrom()]);
+                }
+
             }
 
         }
+        for(string i : trash){
+            clt_map.erase(i);
+        }
 
     }
-//----------------------------------------------------------------------------//
+
     closesocket(ser_sock);
     WSACleanup();
     return 0;
@@ -175,12 +187,7 @@ int main(){
 
 int recvMessage(SOCKET& sock){
     char data[BUF_SIZE];
-    int recv_len = recv(sock,data,BUF_SIZE,0);
-    if(recv_len == 0){
-        cerr<<"client disconnect"<<endl;
-        return 0;
-    }
-    if(recv_len == SOCKET_ERROR){
+    if(recv(sock,data,BUF_SIZE,0) <= 0){
         cerr << "recv failed with error " << WSAGetLastError() << endl;
         return -1;
     }
@@ -190,18 +197,25 @@ int recvMessage(SOCKET& sock){
     return 1;
 }
 
-void sendMessage(){
+int sendMessage(){
     char data[BUF_SIZE];
     need_to_send.serialize(data);
-    SOCKET to_sock = clt_map[need_to_send.returnTo()];
-    send(to_sock,data,BUF_SIZE,0);
+    for(int i =-2;i<0;i++){
+        if(send(clt_map[need_to_send.returnFrom()],data,BUF_SIZE,0)<=0){
+            cerr << "send failed with error " << WSAGetLastError() << endl;
+            return i;
+        }
+        need_to_send.swapFromTo();
+    }
+    return 1;
 }
 
 void recvConfirm(SOCKET clt_sock){
     char data[BUF_SIZE];
     recv(clt_sock,data,BUF_SIZE,0);
+
     Message check;
     check.deserialize(data);
     clt_map.emplace(check.returnFrom(),clt_sock);
-    clt_arr.emplace_back(clt_sock);
 }
+

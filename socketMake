@@ -6,7 +6,7 @@ CFLAGS = -Wall -g
 # 目录设置
 SRCDIR = src
 OBJDIR = obj
-OUTDIR = ./
+OUTDIR = .
 
 LIBDIR = -L library/winsock/lib
 

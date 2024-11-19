@@ -1,7 +1,7 @@
 #include <winsock2.h>
 #include <iostream>
 #include <vector>
-
+#include <thread>
 using namespace std;
 #define BUF_SIZE 100
 #define CONTENT_SIZE 70
@@ -68,11 +68,13 @@ public:
         memcpy(this, buffer, sizeof(Message));
     }
 };
+void recvLoop(SOCKET clt_sock);
+void sendLoop(SOCKET clt_sock,Message message);
+void sendMessage(SOCKET clt_sock,Message message);
 string getInputPrompt(string prompt="");
-void sendMessage(SOCKET& clt_sock,Message message);
-void sendConfirm(SOCKET& clt_sock,Message message);
-void recvMessage(SOCKET& clt_sock);
-
+int send_state = 1;
+int recv_state = 1;
+string user;
 int main(){
     sockaddr_in ser_addr;
     ser_addr.sin_family = AF_INET;
@@ -98,84 +100,75 @@ int main(){
         WSACleanup();
         return 1;      
     }
+    user = getInputPrompt("From");
+
     Message message;
-    message.setFrom(getInputPrompt("From:"));
-    message.setTo(getInputPrompt("To:"));
-    sendConfirm(clt_sock,message);
+    message.setFrom(user);
+    message.setTo(getInputPrompt("To"));
+    message.setContent("");
+    cout<<string(67,'-')<<endl;
+    sendMessage(clt_sock,message);
 
-    int max_fd = clt_sock;
-    fd_set read_fds,temp_fds;
-    FD_ZERO(&read_fds);
-    FD_SET(0,&read_fds);
-    FD_SET(clt_sock,&read_fds);
-    timeval timeout;
-    timeout.tv_sec = 5;
-    timeout.tv_sec = 0;
+    thread send_thread(sendLoop,clt_sock,message);
+    send_thread.detach();
+    thread recv_thread(recvLoop,clt_sock);
+    recv_thread.detach();
 
-    while (1)
-    {
-        cout<<"Content:";
-        temp_fds = read_fds;
-        int select_check = select(max_fd+1,&temp_fds,nullptr,nullptr,&timeout);
-        if(select_check == SOCKET_ERROR){
-            cerr << "select failed with error: " << WSAGetLastError() << endl;
-            break;
-        }
-        if(select_check == 0){
-            cout<<"client Idle No Connection"<<endl;
-            continue;
-        }
-        if(FD_ISSET(0,&temp_fds)){
-            sendMessage(clt_sock,message);
-        }
-        if(FD_ISSET(clt_sock,&temp_fds)){
-            recvMessage(clt_sock);
-        }
-    }
+    while(send_state==1&&recv_state==1);
     WSACleanup();
     return 0;
-}
 
-void recvMessage(SOCKET& clt_sock) {
-    Message recv_message;
-    char data[BUF_SIZE];
-    int recv_len = recv(clt_sock, data, BUF_SIZE, 0);
-    if (recv_len == 0) {
-        cout << "Server disconnected" << endl;
-        closesocket(clt_sock);
-        return;  
-    }
-    if (recv_len == SOCKET_ERROR) {
-        cerr << "recv failed with error " << WSAGetLastError() << endl;
-        return;
+}
+//接收Message
+void recvLoop(SOCKET clt_sock) {
+    while (send_state == 1){
+        char data[BUF_SIZE];
+        if (recv(clt_sock, data, BUF_SIZE, 0) <= 0) {
+            cerr << "recv failed with error " << WSAGetLastError() << endl;
+            recv_state = 0;
+            closesocket(clt_sock);
+            return;  
+        }
+        Message recv_message;
+        recv_message.deserialize(data);
+
+        if(recv_message.returnFrom()!=user){
+            cout <<"\033[46m\033[30m"<<recv_message.returnFrom() << ":" << recv_message.returnContent()<<"\033[0m"<< endl;
+        }else{
+            cout <<"\033[42m\033[30m"<<recv_message.returnFrom() << ":" << recv_message.returnContent()<<"\033[0m"<< endl;
+        }
     }
     
-    recv_message.deserialize(data);
-    cout<<recv_message.returnFrom()<<":"<<recv_message.returnContent()<<endl;
-}
 
-void sendConfirm(SOCKET& clt_sock,Message message){
+}
+void sendLoop(SOCKET clt_sock,Message message){
+    while (recv_state == 1)
+    {
+        message.setContent(getInputPrompt());
+        sendMessage(clt_sock,message);
+    }
+}
+//发送已经准备好的Message
+void sendMessage(SOCKET clt_sock,Message message){
     char data[BUF_SIZE];
     message.serialize(data);
-    int send_check = send(clt_sock,data,BUF_SIZE, 0);
-    if (send_check == SOCKET_ERROR) {
+    if (send(clt_sock,data,BUF_SIZE, 0) <= 0) {
         cerr << "send failed with error " << WSAGetLastError() << endl;
-    } else if (send_check == 0) {
-        cout << "Server disconnected" << endl;
+        send_state = 0;
         closesocket(clt_sock);
-    }
+        return;
+    } 
 }
-void sendMessage(SOCKET& clt_sock,Message message) {
-    message.setContent(getInputPrompt());
-    sendConfirm(clt_sock,message);
-}
-
 
 string getInputPrompt(string prompt){
-    if(prompt!=""){
-        cout<<prompt;
-    }
     string str;
-    getline(cin,str);
+    while(str.empty()){
+        if(prompt!=""){
+            cout<<prompt<<":";
+        }
+        getline(cin,str);
+        cout<<"\033[A\033[0G\033[K";
+    }
     return str;
 }
+

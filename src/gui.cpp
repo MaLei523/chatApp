@@ -55,7 +55,7 @@ int main(){
     ImGui::StyleColorsLight();
 	//在这里可以调很多,具体见demo里的英文
 	ImGuiStyle& style = ImGui::GetStyle();
-	style.WindowRounding = 4;
+	style.WindowRounding = 10;
 
 	//颜色调整
 	//ImVec4* colors = ImGui::GetStyle().Colors;
