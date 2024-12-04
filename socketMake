@@ -6,12 +6,13 @@ CFLAGS = -Wall -g
 # 目录设置
 SRCDIR = src
 OBJDIR = obj
+INCLUDE = -I include
 OUTDIR = .
 
 LIBDIR = -L library/winsock/lib
 
 # 获取所有源文件
-SOURCES = $(filter-out $(SRCDIR)/gui.cpp, $(wildcard $(SRCDIR)/*.cpp))
+SOURCES = $(filter-out $(SRCDIR)/chatApp.cpp, $(wildcard $(SRCDIR)/*.cpp))
 
 # 生成的目标文件对应的 .o 文件
 OBJECTS = $(SOURCES:$(SRCDIR)/%.cpp=$(OBJDIR)/%.o)
@@ -28,11 +29,11 @@ all: $(TARGETS)
 
 # 生成可执行文件（自动针对每个源文件生成对应的目标）
 $(OUTDIR)/%.exe: $(OBJDIR)/%.o
-	$(CC) $(CFLAGS) $(LIBDIR) -o $@ $^ $(LIB)
+	$(CC) $(CFLAGS) $(LIBDIR) $(INCLUDE) -o $@ $^ $(LIB)
 
 # 编译源文件为目标文件
 $(OBJDIR)/%.o: $(SRCDIR)/%.cpp
-	$(CC) $(CFLAGS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(INCLUDE) -c -o $@ $<
 
 # 清理生成的文件
 clean:

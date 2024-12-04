@@ -1,0 +1,40 @@
+CC = g++
+
+CFLAGS = -Wall -g
+
+IMGUI_INCLUDE = -I ./library/ImGui_glfw_opengl3/include
+OPENGL_INCLUDE = -I ./library/OpenGL/include
+INCLUDE = -I ./include
+
+LIBDIR = -L ./library/OpenGL/lib/GLFW
+LIBDIR += -L ./library/winsock/lib
+
+LIB = -lglfw3 -lgdi32 -lopengl32 -limm32 -lws2_32
+
+GUISRCDIR = library/ImGui_glfw_opengl3/src
+SRCDIR = src
+
+OBJDIR = obj
+
+SOURCE1 = $(wildcard $(GUISRCDIR)/*.cpp)
+SOURCE2 = $(filter-out $(SRCDIR)/server.cpp, $(wildcard $(SRCDIR)/*.cpp))
+SOURCE = $(SOURCE1) $(SOURCE2)
+LIST = $(notdir $(SOURCE))
+OBJECT = $(patsubst %.cpp,$(OBJDIR)/%.o,$(LIST))
+
+TARGET = demo.exe
+
+all:$(OBJECT) $(TARGET)
+	rm -f obj/chatApp.o
+
+$(TARGET) : $(OBJECT)
+	$(CC) $(CFLAGS) $(INCLUDE) $(IMGUI_INCLUDE) $(OPENGL_INCLUDE) $(LIBDIR) -o $@ $^ $(LIB)
+
+$(OBJDIR)/%.o : $(GUISRCDIR)/%.cpp
+	$(CC) $(CFLAGS) $(IMGUI_INCLUDE) $(OPENGL_INCLUDE) -c -o $@ $<
+
+$(OBJDIR)/%.o : $(SRCDIR)/%.cpp
+	$(CC) $(CFLAGS) $(INCLUDE) $(IMGUI_INCLUDE) $(OPENGL_INCLUDE) -c -o $@ $<
+
+clean :
+	rm -f $(TARGET) $(OBJECT)

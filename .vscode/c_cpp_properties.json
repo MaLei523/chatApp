@@ -5,7 +5,10 @@
             "includePath": [
                 "${default}",
                 "library/ImGui_glfw_opengl3/include",
-                "library/OpenGL/include"
+                "library/OpenGL/include",
+                "library/CppJson",
+                "library/SQLite",
+                "include"
             ],
             "defines": [
                 "_DEBUG",
